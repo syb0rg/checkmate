@@ -17,12 +17,46 @@ const char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                         "abcdefghijklmnopqrstuvwxyz"
                         " '";
 
-// bottle-neck #1
+void *checkedMalloc(size_t len)
+{
+    void *ret = malloc(len);
+    if (!ret)
+    {
+        fputs("Out of memory!", stderr);
+        exit(0);
+    }
+    return ret;
+}
+
+int arrayExist(char **array, int rows, char *word)
+{
+    for (int i = 0; i < rows; ++i)
+    {
+        if (!strcmp(array[i], word)) return 1;
+    }
+    return 0;
+}
+
+void arrayCleanup(char **array, int rows)
+{
+    for (int i = 0; i < rows; i++)
+    {
+        free(array[i]);
+    }
+}
+
 ENTRY *find(char *word)
 {
     return hsearch((ENTRY){.key = word}, FIND);
 }
 
+/**
+ * Takes in a file name to open and read into the hast table dict
+ *
+ * @param fileName Name of file to open
+ * @param dict Empty ENTRY that is at least the size of the number of lines in
+               the file opened by fileName
+ */
 int readDictionary(const char* fileName, ENTRY dict)
 {
     int fd = open(fileName, O_RDONLY);
@@ -59,26 +93,15 @@ int readDictionary(const char* fileName, ENTRY dict)
     return -1;
 }
 
-void *checked_malloc(size_t len)
-{
-    void *ret = malloc(len);
-    if (!ret)
-    {
-        fputs("Out of memory!", stderr);
-        exit(0);
-    }
-    return ret;
-}
-
 /**
  * Takes a part of the source string and appends it to the destination string.
  *
- * @param     dst       Destination string to append to.
- * @param     dstLen    Current length of the destination string.  This will
- *                      be updated with the new length after appending.
- * @param     src       Source string.
- * @param     srcBegin  Starting index in the source string to copy from.
- * @param     len       Length of portion to copy.
+ * @param dst       Destination string to append to.
+ * @param dstLen    Current length of the destination string.  This will
+ *                  be updated with the new length after appending.
+ * @param src       Source string.
+ * @param srcBegin  Starting index in the source string to copy from.
+ * @param len       Length of portion to copy.
  */
 void append(char *dst, int *dstLen, const char *src, int srcBegin, size_t length)
 {
@@ -98,7 +121,7 @@ int deletion(char *word, char **array, int start)
     for (; i < length; i++)
     {
         int pos = 0;
-        array[i + start] = checked_malloc(length);
+        array[i + start] = checkedMalloc(length);
         append(array[i + start], &pos, word, 0, i);
         append(array[i + start], &pos, word, i + 1, length - (i + 1));
     }
@@ -113,7 +136,7 @@ int transposition(char *word, char **array, int start)
     for (; i < length-1; i++)
     {
         int pos = 0;
-        array[i + start] = checked_malloc(length + 1);
+        array[i + start] = checkedMalloc(length + 1);
         append(array[i + start], &pos, word, 0, i);
         append(array[i + start], &pos, word, i + 1, 1);
         append(array[i + start], &pos, word, i, 1);
@@ -122,7 +145,7 @@ int transposition(char *word, char **array, int start)
     return i;
 }
 
-// bottle-neck #2
+// bottle-neck #1
 int alteration(char *word, char **array, int start)
 {
     int k = 0;
@@ -135,7 +158,7 @@ int alteration(char *word, char **array, int start)
         {
             int pos = 0;
             c[0] = alphabet[j];
-            array[k + start] = checked_malloc(length + 1);
+            array[k + start] = checkedMalloc(length + 1);
             append(array[k + start], &pos, word, 0, i);
             append(array[k + start], &pos, c, 0, 1);
             append(array[k + start], &pos, word, i + 1, length - (i + 1));
@@ -144,7 +167,7 @@ int alteration(char *word, char **array, int start)
     return k;
 }
 
-// bottle-neck #3
+// bottle-neck #2
 int insertion(char *word, char **array, int start)
 {
     int k = 0;
@@ -157,7 +180,7 @@ int insertion(char *word, char **array, int start)
         {
             int pos = 0;
             c[0] = alphabet[j];
-            array[k + start] = checked_malloc(length + 2);
+            array[k + start] = checkedMalloc(length + 2);
             append(array[k + start], &pos, word, 0, i);
             append(array[k + start], &pos, c, 0, 1);
             append(array[k + start], &pos, word, i, length - i);
@@ -166,7 +189,7 @@ int insertion(char *word, char **array, int start)
     return k;
 }
 
-size_t edits1_rows(char *word)
+size_t totalEdits(char *word)
 {
     size_t length = strlen(word);
     
@@ -176,10 +199,10 @@ size_t edits1_rows(char *word)
     (length + 1) * ALPHABET_SIZE;    // insertion
 }
 
-char **edits1(char *word)
+char **edits(char *word)
 {
     int index;
-    char **array = malloc(edits1_rows(word) * sizeof(char*));
+    char **array = malloc(totalEdits(word) * sizeof(char*));
     
     if (!array) return NULL;
     
@@ -191,16 +214,7 @@ char **edits1(char *word)
     return array;
 }
 
-int arrayExist(char **array, int rows, char *word)
-{
-    for (int i = 0; i < rows; ++i)
-    {
-        if (!strcmp(array[i], word)) return 1;
-    }
-    return 0;
-}
-
-char **known_edits2(char **array, int rows, int *e2_rows)
+char **knownEdits(char **array, int rows, int *e2_rows)
 {
     int res_size = 0;
     int res_max  = 0;
@@ -208,8 +222,8 @@ char **known_edits2(char **array, int rows, int *e2_rows)
     
     for (int i = 0; i < rows; i++)
     {
-        char **e1 = edits1(array[i]);
-        size_t e1_rows = edits1_rows(array[i]);
+        char **e1 = edits(array[i]);
+        size_t e1_rows = totalEdits(array[i]);
         
         for (int j = 0; j < e1_rows; j++)
         {
@@ -249,14 +263,6 @@ char *max(char **array, int rows)
     return max_word;
 }
 
-void arrayCleanup(char **array, int rows)
-{
-    for (int i = 0; i < rows; i++)
-    {
-        free(array[i]);
-    }
-}
-
 char *correct(char *word)
 {
     char **e1 = NULL;
@@ -269,10 +275,10 @@ char *correct(char *word)
     
     if (find(word)) return word;
     
-    e1_rows = (unsigned) edits1_rows(word);
+    e1_rows = (unsigned) totalEdits(word);
     if (e1_rows)
     {
-        e1 = edits1(word);
+        e1 = edits(word);
         e1_word = max(e1, e1_rows);
         
         if (e1_word)
@@ -283,7 +289,7 @@ char *correct(char *word)
         }
     }
     
-    e2 = known_edits2(e1, e1_rows, (int*)&e2_rows);
+    e2 = knownEdits(e1, e1_rows, (int*)&e2_rows);
     if (e2_rows)
     {
         e2_word = max(e2, e2_rows);
@@ -313,15 +319,28 @@ int main(int argc, char **argv)
     
 //    char *corrected_word = correct(argv[argc - 1]);
 //    puts(corrected_word);
-    char* correctArray[] = {"baccalaureate", "basketball", "beautiful", "course", "desire", "discotheque", "engineering", "English", "examination",
-                            "example", "favorite", "family", "follow", "finish", "friend", "finally", "gas", "graduate", "have", "holiday", "ideal",
-                            "important", "interested", "language", "leisure", "like", "libraries", "masters", "matches", "mechanicals", "prepare",
-                            "pretty", "Russian", "second", "secondary", "situated", "sixty", "spent", "snooker", "study", "succeed", "teaching",
+    char* correctArray[] = {"baccalaureate", "basketball", "beautiful",
+                            "course", "desire", "discotheque","engineering",
+                            "English", "examination","example", "favorite",
+                            "family", "follow", "finish", "friend", "finally",
+                            "gas", "graduate", "have", "holiday", "ideal",
+                            "important", "interested", "language", "leisure",
+                            "like", "libraries", "masters", "matches",
+                            "mechanicals", "prepare", "pretty", "Russian",
+                            "second", "secondary", "situated", "sixty", "spent",
+                            "snooker", "study", "succeed", "teaching",
                             "university", "week", "with"};
-    char* checkArray[] =   {"bacalaureat", "baskett ball", "beautifull", "cours", "desir", "discotec", "engeneering", "enlgish", "examinition", "exemple",
-                            "favrit", "familly", "folow", "finisch", "freind", "finaly", "gaz", "graduat", "hav", "hollyday", "ideale", "importante",
-                            "intrested", "langage", "leasure", "luke", "libraries", "mastes", "matchs", "mechanials", "prepar", "prety", "rusian",
-                            "secund", "secundry", "situed", "sixthy", "sepent", "snoker", "studie", "succed", "theaching", "univercity", "wik", "whith",};
+    char* checkArray[] =   {"bacalaureat", "baskett ball", "beautifull",
+                            "cours", "desir", "discotec","engeneering",
+                            "enlgish", "examinition", "exemple","favrit",
+                            "familly", "folow", "finisch", "freind", "finaly",
+                            "gaz", "graduat", "hav", "hollyday", "ideale",
+                            "importante", "intrested", "langage", "leasure",
+                            "luke", "libraries", "mastes", "matchs",
+                            "mechanials", "prepar", "prety", "rusian", "secund",
+                            "secundry", "situed", "sixthy", "sepent", "snoker",
+                            "studie", "succed", "theaching", "univercity",
+                            "wik", "whith"};
     int arraySize = sizeof(checkArray)/sizeof(checkArray[0]);
     int correctSum = 0;
     char* guess = NULL;
